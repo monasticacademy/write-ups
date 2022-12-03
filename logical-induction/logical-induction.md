@@ -3,77 +3,63 @@
 
 *This work was supported by the Monastic Academy for the Preservation of Life on Earth and the Long Term Future Fund.*
 
----
+![](https://storage.googleapis.com/doc-publisher-images/a62c1f5e1de9ab69.jpg)
 
 ## Outline
 
-* This post is an explanation of the theory of [logical induction](https://arxiv.org/abs/1609.03543) intended for software engineers and those with a software engineering mindset.
-* My goal is to explain the core logical induction algorithm in a straightforward and accessible way.
-* I will go through an implementation of the logical induction algorithm in Python, and I will use it to explain the basic theory of logical induction, including the core logical induction algorithm.
-* I will give type signatures for all concepts and will work through all algorithms in terms of the sequence of processing steps involved.
+* This post is an explanation of the theory of logical induction developed by Garrabrant *et al*.
+* I formulate the theory in a way that should make sense to software engineers and those with a software engineering mindset.
+* I will go through a full implementation of the logical induction algorithm in Python, and I will use it to explain the basic theory of logical induction, including the core logical induction algorithm.
+* I will give type signatures for all concepts and will work through all algorithms in terms of a sequence of processing steps.
 * The Python code for this guide is [here](http://github.com/monasticacademy/logical-induction).
 * The Colab notebook for this guide is [here](https://colab.research.google.com/github/monasticacademy/logical-induction/blob/master/notebooks/three_updates.ipynb).
 * The index of type signatures for this guide is [here](#Summary_of_terminology_and_type_signatures).
 
 ## Motivation
 
-Logical induction is a theory, [published](https://arxiv.org/abs/1609.03543) in 2016 by Scott Garrabrant, Tsvi Benson-Tilsen, Andrew Critch, Nate Soares, and Jessica Taylor, about how to build machines that maintain uncertainty about the world and update those beliefs in light of evidence. It does this by assigning numbers between 0 and 1 to claims about the world, just as probability theory does, but it makes different guarantees about the internal relationship between those numbers. Whereas probability theory guarantees that its probabilities will obey the sum and product rules of probability, logical induction guarantees that the evolution of the numbers over time will obey the logical induction criterion.
+Logical induction is a theory, [published](https://arxiv.org/abs/1609.03543) in 2016 by Scott Garrabrant, Tsvi Benson-Tilsen, Andrew Critch, Nate Soares, and Jessica Taylor, about how to build machines that maintain uncertainty about the world and update those beliefs in light of evidence. It does this by assigning numbers between 0 and 1 to claims about the world, just as probability theory does, but it makes different guarantees about the internal relationship between those numbers. Whereas probability theory guarantees that its numbers will obey the sum and product rules of probability, logical induction guarantees that the evolution of its numbers over time will obey the logical induction criterion.
 
-Many people have heard that logical induction is about having uncertainty in purely logical facts. It is true that logical induction shows how to construct algorithms that maintain quantified uncertainty in purely logical facts, but in my view this is not really the *point* of logical induction. The point of logical induction, in my view, is that it is always *computable*, even when reasoning about contradictory, uncomputable, or self-referential questions. Its capacity to maintain well-calibrated uncertainty in purely logical facts is actually a by-product of the *computability* of logical induction.
+Many people have heard that logical induction is about having uncertainty in purely logical facts. It is true that logical induction shows how to construct algorithms that maintain uncertainty in purely logical facts, but in my view this is not really the *point* of logical induction. The point of logical induction, in my view, is that it is always *computable*, even when reasoning about contradictory, uncomputable, or self-referential questions. Its capacity to maintain uncertainty about purely logical facts is actually a by-product of the *computability* of logical induction.
 
-Logical induction addresses the same basic problem that probability theory addresses. Logical induction and probability theory, therefore, are two different answers to the question: what is a good formal method for quantifying uncertainty and updating it in light of evidence? Probability theory and logical induction both provide concrete operationalizations of "quantified uncertainty" (henceforth "credence"), and what it means for a set of credences to be "good".
+Logical induction addresses the same basic problem that probability theory addresses. Logical induction and probability theory, therefore, are two different answers to the question: what is a reasonable formal method for quantifying uncertainty and updating it in light of evidence? Probability theory and logical induction both provide concrete operationalizations of "quantified uncertainty" (henceforth "credence"), and what it means for a set of credences to be "reasonable".
 
-Probability theory says that credences are "good" if it is impossible for someone to bet against you in a way that is expected to make money, independent of the true state of the world (a Dutch book). Logical induction says that credences are "good" if it is impossible for someone to bet against you in a way that makes more and more money *over time* with no corresponding down-side risk. The probability theory formulation is the stronger guarantee; its drawback is that it is not in general computable. The logical induction formulation *is* computable, and in this guide we will walk through a general purpose algorithm for computing credences given complicated, even self-referential, world models.
+Probability theory says that credences are "reasonable" if it is impossible for someone to bet against you in a way that is expected to make money, independent of the true state of the world (a Dutch book). Logical induction says that credences are "reasonable" if it is impossible for someone to bet against you in a way that makes more and more money *over time* with no corresponding down-side risk. The probability theory formulation is the stronger guarantee; its drawback is that it is not in general computable. The logical induction formulation *is* computable, and in this guide we will walk through a general purpose algorithm for computing credences given complicated, even self-referential, world models.
 
 At its core, the theory of logical induction consists of two things:
 
-1. A set of proofs showing that *if* you assign credences in a way that is consistent with the logical induction operationalization of uncertainty *then* your credences are guaranteed to exhibit certain common-sense desirable properties such as consistency over time, unbiasedness over time, converging to well-calibrated limits in a timely manner, and so forth.
+1. A set of proofs showing that *if* you assign credences in a way that is consistent with the logical induction operationalization of uncertainty *then* your credences are guaranteed to exhibit certain common-sense desirable properties such as consistency over time, unbiasedness over time, converging to well-calibrated limits in a timely manner.
 
-1. A single example of an algorithm that does assign credences in a way that is consistent with the logical induction operationalization of uncertainty. The existence of this algorithm establishes that the logical induction operationalization of uncertainty is computable. This is the algorithm that we will work through in this guide. It is extremely inefficient.
+1. An algorithm that assigns credences in a way that is consistent with the logical induction operationalization of uncertainty. The existence of this algorithm establishes that the logical induction operationalization of uncertainty is computable. This is the algorithm that we will work through in this guide. It is extremely inefficient.
 
-A by-product of the computability of logical induction is that logical induction propagates logical uncertainty gradually, rather than all at once like in probability theory. What this means is that the logical induction algorithm, upon receiving an observation, may *not* propagate the logical consequences of those observations to all of its credences immediately. For example, if you tell a logical inductor that two variables X and Y are highly coupled, and then you further update your logical inductor with the actual value of X, then the logical inductor may not immediately come to the logical conclusion concerning the possible values of Y:
+A by-product of the computability of logical induction is that logical induction propagates logical uncertainty gradually, rather than all at once as in probability theory. What this means is that the logical induction algorithm, upon receiving an observation, may *not* propagate the logical consequences of those observations to all of its credences immediately. For example, if you tell a logical inductor that two variables X and Y are highly correlated, and then you further update your logical inductor with the actual value of X, then the logical inductor may not immediately come to the logical conclusion concerning the possible values of Y:
 
 ![](https://storage.googleapis.com/doc-publisher-images/37d2ad51b0351217.png)
 
-Any computable algorithm for updating uncertainties over time *must* propagate logical consequences step-by-step rather than all-at-once, because propagating all the logical consequences of an observation is uncomputable in general, since we might have a world model where knowing the logical consequences of an observation is equivalent to knowing whether some Turing machines halts or not. Therefore the capacity that logical induction has to place well-calibrated credences on purely logical facts is really just a *by-product* of the more general feature of being a *computable* algorithm for updating well-calibrated credences in light of evidence.
+Any computable algorithm for updating uncertainties over time *must* propagate logical consequences step-by-step rather than all-at-once, because propagating all the logical consequences of an observation is uncomputable in general, since we might have a world model where knowing the logical consequences of an observation is equivalent to knowing something uncomputable (e.g. whether some Turing machines halts or not). Therefore the ability of logical induction to maintain uncertaint about purely logical facts is really just a *by-product* of the more general feature of being a *computable* method of updating well-calibrated credences in light of evidence.
 
-The remainder of this document is organized as follows. First we will look at how we can reduce everything to probabilities on binary-valued variables with logical relationships between them. Next we look at the inputs and outputs to the logical induction algorithm and their type signatures. Then we discuss the logical induction criterion, which you could view as the "spec" for the logical induction algorithm. Then we go through the logical induction algorithm itself in detail. Finally, we will review a worked example in the form of a Jupyter notebook.
+When we say that "logical induction is computable" we mean that there exists an algorithm that implements the logical induction operationalization of uncertainty for full-general models. There is no such fully-general algorithm for probability theory.
+
+The remainder of this document is organized as follows. First we will look at how we can reduce everything to credences on binary-valued variables with logical relationships between them. Next we look at the inputs and outputs to the logical induction algorithm and their type signatures. Then we discuss the logical induction criterion, which you could view as the "spec" for the logical induction algorithm. Then we go through the logical induction algorithm itself in detail. Finally, we will review a worked example in the form of a Jupyter notebook.
 
 ## Credences on binary-valued variables
 
-In [classical treatments of probability theory](https://www.google.com/books/edition/Probability_Theory/tTN4HuUNXjgC?hl=en&gbpv=1&printsec=frontcover), everything starts with probabilities on binary-valued variables. Probabilities on continuous variables are built up in terms of probabilities of binary-valued variables.
+In [classical treatments of probability theory](https://www.google.com/books/edition/Probability_Theory/tTN4HuUNXjgC?hl=en&gbpv=1&printsec=frontcover), everything starts with probabilities on binary-valued variables, and probabilities on continuous variables are built up out of that.
 
 ![](https://storage.googleapis.com/doc-publisher-images/b9b01ec779c5229b.png)
 
-For many of us, though, it is more common to think directly in terms of continuous variables with probability "distributions" over them:
+For many of us, though, it is more common to think directly in terms of continuous variables with probability distributions over them:
 
 ![](https://storage.googleapis.com/doc-publisher-images/61d9381a7be9a586.png)
 
-In logical induction, everything is worked out in terms of binary-valued variables, and all relationships between variables are written in the language of first-order logic, which means combinations of AND, OR, NOT, FOR-ALL, and THERE-EXISTS relationships. In order to take a probabilistic relationship such as
+In logical induction, everything is worked out in terms of binary-valued variables, and all relationships between variables are written in the language of first-order logic, which means combinations of AND, OR, NOT, FOR-ALL, and THERE-EXISTS relationships. The first task in applying logical induction to any problem is to formulate that problem in terms of binary-valued variables with purely logical relationships between them. This could be done in any number of ways, such as:
 
-y ~ x/2 + Noise(stddev) ,
+* To talk about a continuous-valued variable *x* with a fixed distribution (say a Gaussian distribution with some particular mean and variance) you could have a set of binary-valued variables $X_a$, each of which is true whenever the the continuous-valued variable is less than $a$. Logical induction does not "see" the value of $a$ in $X_a$ --- it just "sees" an undifferentiated binary-valued variable whose truth depends logically on some other variables.
 
-which says that the value of the continuous-valued variable *y* is distributed normally with mean equal to half of the value of the continuous-valued variable *x* and standard deviation equal to *stddev*, and turn it into a set of logical relationships between binary-valued variables we will need to do the following:
+* To talk about two continuous-valued variables *x* and *y* that are correlated, you could construct a third continuous-valued variable $z$ representing the deviation of $x$ and $y$ from perfect correlation, and then construct three sets of binary-valued variables $X_a$, $Y_b$, and $Z_c$ as per the previous bullet point. You would add logical relationships of the form "IF $X_a$ AND $Y_b$ THEN $Z_c$" for the particular values of $a$, $b$, and $c$ corresponding to the correlation coefficients between $x$ and $y$. That is, if it was the case that $z = y - x$ then we would feed logical induction the sentence "IF $X_2$ AND $Y_9$ THEN $Z_7$" (because $7 = 9 - 2$) along with other multiples of these coefficients
 
-1. Wherever there is a stochastic quantity such as "Noise(stddev)", replace it with a continuous-valued variable whose value we may not know. Let us use *z* in this case:
+* To talk about a computer program, we might have a binary-valued variable for each possible value of each variable after executing each line of code. The lines of code would then become logical relationships between those variables.
 
-y = x/2 + z
-
-z ~ Noise(stddev)
-
-1. Define a set of binary-valued variables $X_{a,b}$ for each real number *a* and *b* which is true if *x* turns out to be between *a* and *b* and false otherwise.
-
-1. Define a corresponding set of binary-valued variables $Y_{a,b}$ and $Z_{a,b}$ for the
-
-1. continuous variables *y* and *z*.
-
-1. Rewrite the continuous-valued relationship above in the form
-
-For all real numbers a,b,c,d: if X_{a,b} and Z_{c,d} then Y_{a/2+c, b/2+d}
-
-This logical statement says that if X is between *a* and *b* and Z is between *c* and *d* then Y is between a/2+c and b/2+d. This conveys the same information that the original stochastic relationship conveyed, but now we are writing everything in terms of binary-valued variables and logical relationships between them.
-
-You may be concerned at this point that there are an infinite number of binary-valued variables that we need to track, because there are an infinite number of numbers *a* and *b* and there is a different binary-valued variable $X_{a,b}$ for each one. The reason we don’t need to worry about this is that our logical inductor will only evaluate credences for some finite number of of these variables at any point in its execution, and the choice of which variables to place credences on will be determined by which variables have appeared directly (outside of for-all clauses) in observations, and which variables its current *trading policies* (to be discussed below) refer to. Observations and trading policies will be provided one-by-one to the logical inductor, so it will only ever be dealing with a finite number of them. Each observation and trading policy will incorporate only a finite number of variables, so actually the logical inductor will only be considering a finite number of binary-valued variables at any point, even considering the various intermediate values that it might propagate information through. Therefore even though we set things up *as if* there are an infinite number of binary-valued variables to keep track of, our logical inductor will actually just keep track of a finite number of them, and the choice of which particular variables to incorporate will fall out of the logical induction algorithm to be discussed below.
+You may be concerned at this point that there are an infinite number of binary-valued variables that we need to track, and an infinite number of constraints between them. The way we deal with this in logical induction is by feeding the constraints into the logical inductor as "observations", one-by-one, such that at every point in time the logical inductor has only a finite number of sentences to deal with. Each one of those finite sentences contains only a finite number of binary-valued variables, so the logical inductor is always working with a finite number of binary-valued variables. The logical induction algorithm does not require any up-front list of all the variables in the world, or anything like that; rather, when it receives a new sentences containing a variable previously unknown to it, it can begin tracking and updating credences in that variable seamlessly.
 
 In the remainder of this document we will refer to a binary-valued variable as an "atom" and to a logical statement about some variables as a "logical sentence". A logical sentence that we pass to our logical inductor as "observed true" will be referred to as an "observation".
 
@@ -174,7 +160,7 @@ Here is a summary of the type signatures of the concepts we have introduced in t
 | Concept  | Type  | In the paper  | In Python code  |
 | --- | --- | --- | --- |
 | BeliefHistory  | List<BeliefState>  | Belief history  | [class History](https://monasticacademy.github.io/logical-induction/link/History)  |
-| Price Constant Sum Product Max Reciprocal  | Function:   PriceHistory ->   List<Pair<     Sentence,     Number     | Expressible feature  | [class Price](https://monasticacademy.github.io/logical-induction/link/Price) [class Constant](https://monasticacademy.github.io/logical-induction/link/Constant) [class Sum](https://monasticacademy.github.io/logical-induction/link/Sum) [class Product](https://monasticacademy.github.io/logical-induction/link/Product) [class Max](https://monasticacademy.github.io/logical-induction/link/Max) [class Reciprocal](https://monasticacademy.github.io/logical-induction/link/Reciprocal)  |
+| Price, Constant, Sum, Product, Max, Reciprocal  | Function:   PriceHistory ->   List<Pair<     Sentence,     Number     | Expressible feature  | [class Price](https://monasticacademy.github.io/logical-induction/link/Price) [class Constant](https://monasticacademy.github.io/logical-induction/link/Constant) [class Sum](https://monasticacademy.github.io/logical-induction/link/Sum) [class Product](https://monasticacademy.github.io/logical-induction/link/Product) [class Max](https://monasticacademy.github.io/logical-induction/link/Max) [class Reciprocal](https://monasticacademy.github.io/logical-induction/link/Reciprocal)  |
 | TradingPrimitive  | Price |  Constant | Sum | Product | Max | Reciprocal  | Expressible feature  | N/A  |
 | TradingFormula  | TreeOver<TradingPrimitive>  | Expressible feature  | [class Formula](https://monasticacademy.github.io/logical-induction/link/Formula)  |
 | TradingPolicy  | List<Pair<   Sentence,   TradingFormula >>   | Trading strategy  | N/A  |
